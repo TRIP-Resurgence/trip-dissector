@@ -5,8 +5,8 @@ trip_msg_type = ProtoField.uint8("trip.msg.type", "Message Type", base.DEC)
 
 trip_open_ver = ProtoField.uint8("trip.msg.open.ver", "Version", base.DEC)
 trip_open_hold = ProtoField.uint16("trip.msg.open.hold", "Hold Time (s)", base.DEC)
-trip_open_itad = ProtoField.uint16("trip.msg.open.itad", "ITAD", base.DEC)
-trip_open_id = ProtoField.uint16("trip.msg.open.id", "ID", base.HEX)
+trip_open_itad = ProtoField.uint32("trip.msg.open.itad", "ITAD", base.DEC)
+trip_open_id = ProtoField.uint32("trip.msg.open.id", "ID", base.HEX)
 trip_open_optslen = ProtoField.uint16("trip.msg.open.opts_len", "Optional Parameters Length", base.DEC)
 
 trip_opt_type = ProtoField.uint16("trip.msg.open.opt.type", "Option Type", base.DEC)
@@ -21,9 +21,12 @@ trip_transmode = ProtoField.uint16("trip.msg.open.opt.capinfo.transmode.mode", "
 
 trip_attr_flags = ProtoField.uint8("trip.msg.update.attr.flags", "Flags", base.HEX)
 trip_attr_type = ProtoField.uint8("trip.msg.update.attr.type", "Type", base.DEC)
-trip_attr_len = ProtoField.uint8("trip.msg.update.attr.len", "Length", base.DEC)
-trip_attr_id = ProtoField.uint8("trip.msg.update.attr.lsencap.id", "LSID", base.HEX)
-trip_attr_seq = ProtoField.uint8("trip.msg.update.attr.lsencap.seq", "Sequence number", base.DEC)
+trip_attr_len = ProtoField.uint16("trip.msg.update.attr.len", "Length", base.DEC)
+trip_attr_id = ProtoField.uint32("trip.msg.update.attr.lsencap.id", "LSID", base.HEX)
+trip_attr_seq = ProtoField.uint32("trip.msg.update.attr.lsencap.seq", "Sequence number", base.DEC)
+
+trip_route_len = ProtoField.uint16("trip.msg.update.attr.route.len", "Length", base.DEC)
+trip_route_prefix = ProtoField.string("trip.msg.update.attr.route.pfx", "Prefix")
 
 trip_proto.fields = {
 	trip_msg_len,
@@ -45,6 +48,8 @@ trip_proto.fields = {
 	trip_attr_len,
 	trip_attr_id,
 	trip_attr_seq,
+	trip_route_len,
+	trip_route_prefix,
 }
 
 -- create a function to dissect it
@@ -156,6 +161,14 @@ function trip_proto.dissector(buffer, pinfo, tree)
 				attr_val_off = attr_val_off + 8
 			end
 
+			if attr_type == 1 then
+				local routes_subtree = attr_subtree:add(trip_proto, buffer(), "WithdrawnRoutes")
+				dissect_routes(routes_subtree, buffer, attr_len, attr_val_off)
+			elseif attr_type == 2 then
+				local routes_subtree = attr_subtree:add(trip_proto, buffer(), "ReachableRoutes")
+				dissect_routes(routes_subtree, buffer, attr_len, attr_val_off)
+			end
+
 			msg_len = msg_len - ((attr_val_off + attr_len) - attr_off)
 			attr_off = attr_val_off + attr_len
 		end
@@ -165,6 +178,25 @@ function trip_proto.dissector(buffer, pinfo, tree)
 		pinfo.cols.info = "NOTIFICATION"
 	elseif msg_type_num == 4 then
 		pinfo.cols.info = "KEEPALIVE"
+	end
+end
+
+function dissect_routes(tree, buffer, attr_len, route_off)
+	while attr_len > 0 do
+		local route_subtree = tree:add(trip_proto, buffer(), "Route")
+
+		local prefix_len = buffer(route_off + 4, 2):le_uint()
+		route_subtree
+			:add_le(trip_af, buffer(route_off, 2))
+			:append_text(" (" .. get_af_name(buffer(route_off, 2):le_uint()) .. ")")
+		route_subtree
+			:add_le(trip_appproto, buffer(route_off + 2, 2))
+			:append_text(" (" .. get_appproto_name(buffer(route_off + 2, 2):le_uint()) .. ")")
+		route_subtree:add_le(trip_route_len, buffer(route_off + 4, 2))
+		route_subtree:add_le(trip_route_prefix, buffer(route_off + 6, prefix_len))
+
+		attr_len = attr_len - ((route_off + 6 + prefix_len) - route_off)
+		route_off = route_off + 6 + prefix_len
 	end
 end
 
