@@ -23,7 +23,7 @@ trip_attr_flags = ProtoField.uint8("trip.msg.update.attr.flags", "Flags", base.H
 trip_attr_type = ProtoField.uint8("trip.msg.update.attr.type", "Type", base.DEC)
 trip_attr_len = ProtoField.uint16("trip.msg.update.attr.len", "Length", base.DEC)
 trip_attr_id = ProtoField.uint32("trip.msg.update.attr.lsencap.id", "LSID", base.HEX)
-trip_attr_seq = ProtoField.uint32("trip.msg.update.attr.lsencap.seq", "Sequence number", base.DEC)
+trip_attr_seq = ProtoField.int32("trip.msg.update.attr.lsencap.seq", "Sequence number", base.DEC)
 
 trip_route_len = ProtoField.uint16("trip.msg.update.attr.route.len", "Length", base.DEC)
 trip_route_prefix = ProtoField.string("trip.msg.update.attr.route.pfx", "Prefix")
@@ -63,7 +63,7 @@ function trip_proto.dissector(buffer, pinfo, tree)
 	local subtree = tree:add(trip_proto, buffer(), "TRIP Data")
 
 	-- message header
-	local msg_len = buffer(2, 1):le_uint()
+	local msg_len = buffer(0, 2):le_uint()
 	subtree:add_le(trip_msg_len, buffer(0, 2))
 
 	local msg_type_num = buffer(2, 1):le_uint()
@@ -142,6 +142,7 @@ function trip_proto.dissector(buffer, pinfo, tree)
 
 		local attr_off = 3
 		while msg_len > 0 do
+			print("old msg_len " .. msg_len)
 			local attr_subtree = update_subtree:add(trip_proto, buffer(), "Attribute")
 
 			local attr_flags = buffer(attr_off, 1):le_uint()
@@ -155,7 +156,7 @@ function trip_proto.dissector(buffer, pinfo, tree)
 			attr_subtree:add_le(trip_attr_len, buffer(attr_off + 2, 2))
 
 			local attr_val_off = attr_off + 4
-			if (attr_flags >> 4) & 1 then
+			if attr_flags & 8 == 1 then
 				attr_subtree:add_le(trip_attr_id, buffer(attr_off + 4, 4))
 				attr_subtree:add_le(trip_attr_seq, buffer(attr_off + 8, 4))
 				attr_val_off = attr_val_off + 8
@@ -171,6 +172,8 @@ function trip_proto.dissector(buffer, pinfo, tree)
 
 			msg_len = msg_len - ((attr_val_off + attr_len) - attr_off)
 			attr_off = attr_val_off + attr_len
+			print("attr_len " .. attr_len)
+			print("new msg_len " .. msg_len)
 		end
 
 		pinfo.cols.info = "UPDATE"
