@@ -28,6 +28,24 @@ trip_attr_seq = ProtoField.int32("trip.msg.update.attr.lsencap.seq", "Sequence n
 trip_route_len = ProtoField.uint16("trip.msg.update.attr.route.len", "Length", base.DEC)
 trip_route_prefix = ProtoField.string("trip.msg.update.attr.route.pfx", "Prefix")
 
+trip_nexthop_itad = ProtoField.uint32("trip.msg.update.attr.nexthop.itad", "ITAD", base.DEC)
+trip_nexthop_len = ProtoField.uint16("trip.msg.update.attr.nexthop.len", "Length", base.DEC)
+trip_nexthop_server = ProtoField.string("trip.msg.update.attr.nexthop.len", "Server")
+
+trip_path_type = ProtoField.uint8("trip.msg.update.attr.path.type", "Type", base.DEC)
+trip_path_len = ProtoField.uint8("trip.msg.update.attr.path.len", "Length", base.DEC)
+trip_path_seg = ProtoField.uint32("trip.msg.update.attr.path.segs", "Segment ITAD", base.DEC)
+
+trip_localpref = ProtoField.uint32("trip.msg.update.attr.localpref", "Local preference", base.DEC)
+
+trip_multiexitdisc =
+	ProtoField.uint32("trip.msg.update.attr.multiexitdisc", "Multi exit discriminator (metric)", base.DEC)
+
+trip_community_itad = ProtoField.uint32("trip.msg.update.attr.community.itad", "ITAD", base.DEC)
+trip_community_id = ProtoField.uint32("trip.msg.update.attr.community.id", "ID", base.DEC)
+
+trip_itadtopo_itad = ProtoField.uint32("trip.msg.update.attr.itadtopo.itad", "ITAD", base.DEC)
+
 trip_notif_code = ProtoField.uint8("trip.msg.notif.code", "Code", base.DEC)
 trip_notif_subcode = ProtoField.uint8("trip.msg.notif.subcode", "Subcode", base.DEC)
 
@@ -53,6 +71,17 @@ trip_proto.fields = {
 	trip_attr_seq,
 	trip_route_len,
 	trip_route_prefix,
+	trip_nexthop_itad,
+	trip_nexthop_len,
+	trip_nexthop_server,
+	trip_path_type,
+	trip_path_len,
+	trip_path_seg,
+	trip_localpref,
+	trip_multiexitdisc,
+	trip_community_itad,
+	trip_community_id,
+	trip_itadtopo_itad,
 	trip_notif_code,
 	trip_notif_subcode,
 }
@@ -181,6 +210,30 @@ function trip_proto.dissector(buffer, pinfo, tree)
 				local routes_subtree = attr_subtree:add(trip_proto, buffer(), "ReachableRoutes")
 				local rcount = dissect_routes(routes_subtree, buffer, attr_len, attr_val_off)
 				info_detail = "ReachableRoutes[" .. rcount .. "]"
+			elseif attr_type == 3 then
+				local nexthop_subtree = attr_subtree:add(trip_proto, buffer(), "NextHopServer")
+				local len = buffer(attr_val_off + 4, 2):le_uint()
+				nexthop_subtree:add_le(trip_nexthop_itad, buffer(attr_val_off, 4))
+				nexthop_subtree:add_le(trip_nexthop_len, buffer(attr_val_off + 4, 2))
+				nexthop_subtree:add_le(trip_nexthop_server, buffer(attr_val_off + 6, len))
+			elseif attr_type == 4 then
+				local path_subtree = attr_subtree:add(trip_proto, buffer(), "AdvertisementPath")
+				dissect_path(path_subtree, buffer, attr_val_off)
+			elseif attr_type == 5 then
+				local path_subtree = attr_subtree:add(trip_proto, buffer(), "RoutedPath")
+				dissect_path(path_subtree, buffer, attr_val_off)
+			elseif attr_type == 6 then
+				local routes_subtree = attr_subtree:add(trip_proto, buffer(), "AtomicAggregate")
+			elseif attr_type == 7 then
+				local routes_subtree = attr_subtree:add(trip_proto, buffer(), "LocalPreference")
+			elseif attr_type == 8 then
+				local routes_subtree = attr_subtree:add(trip_proto, buffer(), "MultiExitDiscriminator")
+			elseif attr_type == 9 then
+				local routes_subtree = attr_subtree:add(trip_proto, buffer(), "Communities")
+			elseif attr_type == 10 then
+				local routes_subtree = attr_subtree:add(trip_proto, buffer(), "ITAD Topology")
+			elseif attr_type == 11 then
+				local routes_subtree = attr_subtree:add(trip_proto, buffer(), "ConvertedRoute")
 			end
 
 			msg_len = msg_len - ((attr_val_off + attr_len) - attr_off)
@@ -225,6 +278,17 @@ function dissect_routes(tree, buffer, attr_len, route_off)
 		count = count + 1
 	end
 	return count
+end
+
+function dissect_path(tree, buffer, off)
+	local type = buffer(off, 1):le_uint()
+	local len = buffer(off + 1, 1):le_uint()
+	tree:add_le(trip_path_type, buffer(off, 1)):append_text(" (" .. get_segment_type_name(type) .. ")")
+	tree:add_le(trip_path_len, buffer(off + 1, 1))
+	local segments_subtree = tree:add(trip_proto, buffer(), "Segments")
+	for i = 0, len - 1 do
+		segments_subtree:add_le(trip_path_seg, buffer(off + 2 + (4 * i), 4))
+	end
 end
 
 function ipv4_to_str(ip)
@@ -360,6 +424,18 @@ function get_attr_name(attr)
 	return name
 end
 
+function get_segment_type_name(type)
+	local name = "Unknown"
+
+	if type == 1 then
+		name = "Set"
+	elseif type == 2 then
+		name = "Sequence"
+	end
+
+	return name
+end
+
 function get_code_name(code)
 	local name = "Unknown"
 
@@ -428,5 +504,3 @@ end
 
 tcp_port = DissectorTable.get("tcp.port")
 tcp_port:add(6069, trip_proto)
-
-print("test")
