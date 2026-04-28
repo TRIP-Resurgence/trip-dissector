@@ -105,7 +105,7 @@ function trip_proto.dissector(buffer, pinfo, tree)
 
 	-- message data
 	if msg_type_num == 1 then
-		local open_subtree = subtree:add(trip_proto, buffer(), "OPEN")
+		local open_subtree = subtree:add(trip_proto, buffer(3, msg_len), "OPEN")
 
 		local itad = buffer(7, 4):le_uint()
 		local id = buffer(11, 4):le_uint()
@@ -121,7 +121,7 @@ function trip_proto.dissector(buffer, pinfo, tree)
 		local optslen = buffer(15, 2):le_uint()
 		local optoff = 17
 		while optslen > 0 do
-			local opt_subtree = open_subtree:add(trip_proto, buffer(), "Optional Parameter")
+			local opt_subtree = open_subtree:add(trip_proto, buffer(optoff, optslen), "Optional Parameter")
 
 			local opt_type_num = buffer(optoff, 2):le_uint()
 			opt_subtree
@@ -134,20 +134,22 @@ function trip_proto.dissector(buffer, pinfo, tree)
 				local capslen = optlen
 				local capoff = 21
 				while capslen > 0 do
-					local capinfo_subtree = opt_subtree:add(trip_proto, buffer(), "Capability Information")
+					local cap_len = buffer(capoff + 2, 2):le_uint()
+					local capinfo_subtree =
+						opt_subtree:add(trip_proto, buffer(capoff, 4 + cap_len), "Capability Information")
 
 					local cap_code_num = buffer(capoff, 2):le_uint()
 					capinfo_subtree
 						:add_le(trip_capinfo_code, buffer(capoff, 2))
 						:append_text(" (" .. get_capinfo_code_name(cap_code_num) .. ")")
 					capinfo_subtree:add_le(trip_capinfo_len, buffer(capoff + 2, 2))
-					local cap_len = buffer(capoff + 2, 2):le_uint()
 
 					if cap_code_num == 1 then
 						local routetype_off = capoff + 4
 						local routetype_len = cap_len
 						while routetype_len > 0 do
-							local routetype_subtree = capinfo_subtree:add(trip_proto, buffer(), "Route Type")
+							local routetype_subtree =
+								capinfo_subtree:add(trip_proto, buffer(routetype_off, 4), "Route Type")
 
 							routetype_subtree
 								:add_le(trip_af, buffer(routetype_off, 2))
@@ -160,7 +162,8 @@ function trip_proto.dissector(buffer, pinfo, tree)
 							routetype_len = routetype_len - 4
 						end
 					elseif cap_code_num == 2 then
-						local routetype_subtree = capinfo_subtree:add(trip_proto, buffer(), "Transmission Mode")
+						local routetype_subtree =
+							capinfo_subtree:add(trip_proto, buffer(capoff + 4, 4), "Transmission Mode")
 						routetype_subtree
 							:add_le(trip_transmode, buffer(capoff + 4, 4))
 							:append_text(" (" .. get_transmode_name(buffer(capoff + 4, 4):le_uint()) .. ")")
@@ -177,17 +180,19 @@ function trip_proto.dissector(buffer, pinfo, tree)
 
 		pinfo.cols.info = "OPEN " .. info_detail
 	elseif msg_type_num == 2 then
-		local update_subtree = subtree:add(trip_proto, buffer(), "UPDATE")
+		local update_subtree = subtree:add(trip_proto, buffer(3, msg_len), "UPDATE")
 
 		local info_detail = nil
 
 		local attr_off = 3
 		while msg_len > 0 do
-			local attr_subtree = update_subtree:add(trip_proto, buffer(), "Attribute")
-
-			local attr_flags = buffer(attr_off, 1):le_uint()
-			local attr_type = buffer(attr_off + 1, 1):le_uint()
 			local attr_len = buffer(attr_off + 2, 2):le_uint()
+			local attr_flags = buffer(attr_off, 1):le_uint()
+			local lsencap = attr_flags & 8 == 1
+			local attr_subtree =
+				update_subtree:add(trip_proto, buffer(attr_off, (lsencap and 12 or 4) + attr_len), "Attribute")
+
+			local attr_type = buffer(attr_off + 1, 1):le_uint()
 
 			attr_subtree:add_le(trip_attr_flags, buffer(attr_off, 1))
 			attr_subtree
@@ -196,44 +201,45 @@ function trip_proto.dissector(buffer, pinfo, tree)
 			attr_subtree:add_le(trip_attr_len, buffer(attr_off + 2, 2))
 
 			local attr_val_off = attr_off + 4
-			if attr_flags & 8 == 1 then
+			if lsencap then
 				attr_subtree:add_le(trip_attr_id, buffer(attr_off + 4, 4))
 				attr_subtree:add_le(trip_attr_seq, buffer(attr_off + 8, 4))
 				attr_val_off = attr_val_off + 8
 			end
 
 			if attr_type == 1 then
-				local routes_subtree = attr_subtree:add(trip_proto, buffer(), "WithdrawnRoutes")
+				local routes_subtree = attr_subtree:add(trip_proto, buffer(attr_val_off, attr_len), "WithdrawnRoutes")
 				local rcount = dissect_routes(routes_subtree, buffer, attr_len, attr_val_off)
 				info_detail = "WithdrawnRoutes[" .. rcount .. "]"
 			elseif attr_type == 2 then
-				local routes_subtree = attr_subtree:add(trip_proto, buffer(), "ReachableRoutes")
+				local routes_subtree = attr_subtree:add(trip_proto, buffer(attr_val_off, attr_len), "ReachableRoutes")
 				local rcount = dissect_routes(routes_subtree, buffer, attr_len, attr_val_off)
 				info_detail = "ReachableRoutes[" .. rcount .. "]"
 			elseif attr_type == 3 then
-				local nexthop_subtree = attr_subtree:add(trip_proto, buffer(), "NextHopServer")
+				local nexthop_subtree = attr_subtree:add(trip_proto, buffer(attr_val_off, attr_len), "NextHopServer")
 				local len = buffer(attr_val_off + 4, 2):le_uint()
 				nexthop_subtree:add_le(trip_nexthop_itad, buffer(attr_val_off, 4))
 				nexthop_subtree:add_le(trip_nexthop_len, buffer(attr_val_off + 4, 2))
 				nexthop_subtree:add_le(trip_nexthop_server, buffer(attr_val_off + 6, len))
 			elseif attr_type == 4 then
-				local path_subtree = attr_subtree:add(trip_proto, buffer(), "AdvertisementPath")
+				local path_subtree = attr_subtree:add(trip_proto, buffer(attr_val_off, attr_len), "AdvertisementPath")
 				dissect_path(path_subtree, buffer, attr_val_off)
 			elseif attr_type == 5 then
-				local path_subtree = attr_subtree:add(trip_proto, buffer(), "RoutedPath")
+				local path_subtree = attr_subtree:add(trip_proto, buffer(attr_val_off, attr_len), "RoutedPath")
 				dissect_path(path_subtree, buffer, attr_val_off)
 			elseif attr_type == 6 then
-				local routes_subtree = attr_subtree:add(trip_proto, buffer(), "AtomicAggregate")
+				local routes_subtree = attr_subtree:add(trip_proto, buffer(attr_val_off, attr_len), "AtomicAggregate")
 			elseif attr_type == 7 then
-				local routes_subtree = attr_subtree:add(trip_proto, buffer(), "LocalPreference")
+				local routes_subtree = attr_subtree:add(trip_proto, buffer(attr_val_off, attr_len), "LocalPreference")
 			elseif attr_type == 8 then
-				local routes_subtree = attr_subtree:add(trip_proto, buffer(), "MultiExitDiscriminator")
+				local routes_subtree =
+					attr_subtree:add(trip_proto, buffer(attr_val_off, attr_len), "MultiExitDiscriminator")
 			elseif attr_type == 9 then
-				local routes_subtree = attr_subtree:add(trip_proto, buffer(), "Communities")
+				local routes_subtree = attr_subtree:add(trip_proto, buffer(attr_val_off, attr_len), "Communities")
 			elseif attr_type == 10 then
-				local routes_subtree = attr_subtree:add(trip_proto, buffer(), "ITAD Topology")
+				local routes_subtree = attr_subtree:add(trip_proto, buffer(attr_val_off, attr_len), "ITAD Topology")
 			elseif attr_type == 11 then
-				local routes_subtree = attr_subtree:add(trip_proto, buffer(), "ConvertedRoute")
+				local routes_subtree = attr_subtree:add(trip_proto, buffer(attr_val_off, attr_len), "ConvertedRoute")
 			end
 
 			msg_len = msg_len - ((attr_val_off + attr_len) - attr_off)
@@ -242,7 +248,7 @@ function trip_proto.dissector(buffer, pinfo, tree)
 
 		pinfo.cols.info = "UPDATE " .. info_detail
 	elseif msg_type_num == 3 then
-		local notif_subtree = subtree:add(trip_proto, buffer(), "NOTIFICATION")
+		local notif_subtree = subtree:add(trip_proto, buffer(3, 2), "NOTIFICATION")
 
 		local code = buffer(3, 1):le_uint()
 		local subcode = buffer(4, 1):le_uint()
@@ -261,9 +267,9 @@ end
 function dissect_routes(tree, buffer, attr_len, route_off)
 	local count = 0
 	while attr_len > 0 do
-		local route_subtree = tree:add(trip_proto, buffer(), "Route")
-
 		local prefix_len = buffer(route_off + 4, 2):le_uint()
+		local route_subtree = tree:add(trip_proto, buffer(route_off, 6 + prefix_len), "Route")
+
 		route_subtree
 			:add_le(trip_af, buffer(route_off, 2))
 			:append_text(" (" .. get_af_name(buffer(route_off, 2):le_uint()) .. ")")
