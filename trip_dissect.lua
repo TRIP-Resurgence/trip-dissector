@@ -291,7 +291,7 @@ function dissect_path(tree, buffer, off)
 	local len = buffer(off + 1, 1):le_uint()
 	tree:add_le(trip_path_type, buffer(off, 1)):append_text(" (" .. get_segment_type_name(type) .. ")")
 	tree:add_le(trip_path_len, buffer(off + 1, 1))
-	local segments_subtree = tree:add(trip_proto, buffer(), "Segments")
+	local segments_subtree = tree:add(trip_proto, buffer(off + 2, 4 * len), "Segments")
 	for i = 0, len - 1 do
 		segments_subtree:add_le(trip_path_seg, buffer(off + 2 + (4 * i), 4))
 	end
