@@ -20,6 +20,11 @@ trip_appproto = ProtoField.uint16("trip.app_proto", "Application Protocol", base
 trip_transmode = ProtoField.uint16("trip.msg.open.opt.capinfo.transmode.mode", "Transmission Mode", base.DEC)
 
 trip_attr_flags = ProtoField.uint8("trip.msg.update.attr.flags", "Flags", base.HEX)
+trip_attr_flags_wellknown = ProtoField.uint8("trip.msg.update.attr.flags.wellknown", "Well-Known", base.HEX)
+trip_attr_flags_trans = ProtoField.uint8("trip.msg.update.attr.flags.trans", "Independent Transitive", base.HEX)
+trip_attr_flags_depend = ProtoField.uint8("trip.msg.update.attr.flags.depend", "Dependent", base.HEX)
+trip_attr_flags_partial = ProtoField.uint8("trip.msg.update.attr.flags.partial", "Partial", base.HEX)
+trip_attr_flags_lsencap = ProtoField.uint8("trip.msg.update.attr.flags.lsencap", "Link-State Enapsulated", base.HEX)
 trip_attr_type = ProtoField.uint8("trip.msg.update.attr.type", "Type", base.DEC)
 trip_attr_len = ProtoField.uint16("trip.msg.update.attr.len", "Length", base.DEC)
 trip_attr_id = ProtoField.uint32("trip.msg.update.attr.lsencap.id", "LSID", base.HEX)
@@ -65,6 +70,11 @@ trip_proto.fields = {
 	trip_appproto,
 	trip_transmode,
 	trip_attr_flags,
+	trip_attr_flags_wellknown,
+	trip_attr_flags_trans,
+	trip_attr_flags_depend,
+	trip_attr_flags_partial,
+	trip_attr_flags_lsencap,
 	trip_attr_type,
 	trip_attr_len,
 	trip_attr_id,
@@ -194,7 +204,7 @@ function trip_proto.dissector(buffer, pinfo, tree)
 
 			local attr_type = buffer(attr_off + 1, 1):uint()
 
-			attr_subtree:add(trip_attr_flags, buffer(attr_off, 1))
+			dissect_flags(attr_subtree, buffer, attr_off)
 			attr_subtree
 				:add(trip_attr_type, buffer(attr_off + 1, 1))
 				:append_text(" (" .. get_attr_name(attr_type) .. ")")
@@ -260,6 +270,67 @@ function trip_proto.dissector(buffer, pinfo, tree)
 	elseif msg_type_num == 4 then
 		pinfo.cols.info = "KEEPALIVE"
 	end
+end
+
+function dissect_flags(tree, buffer, off)
+	local flags = buffer(off, 1):uint()
+	local flag_wellknown = (flags >> 7) & 1 ~= 0
+	local flag_trans = (flags >> 6) & 1 ~= 0
+	local flag_depend = (flags >> 5) & 1 ~= 0
+	local flag_partial = (flags >> 4) & 1 ~= 0
+	local flag_lsencap = (flags >> 3) & 1 ~= 0
+	local flags_strs = {}
+	if flag_wellknown then
+		table.insert(flags_strs, "Well-Known")
+	end
+	if flag_trans then
+		table.insert(flags_strs, "Independent Transitive")
+	end
+	if flag_depend then
+		table.insert(flags_strs, "Dependent")
+	end
+	if flag_partial then
+		table.insert(flags_strs, "Partial")
+	end
+	if flag_lsencap then
+		table.insert(flags_strs, "Link-State Encapsulated")
+	end
+	local flags_str = ""
+	flags_str = flags_str .. flags_strs[1]
+	table.remove(flags_strs, 1)
+	for _, flag in ipairs(flags_strs) do
+		flags_str = flags_str .. ", " .. flag
+	end
+
+	local subtree = tree:add(trip_attr_flags, buffer(off, 1)):append_text(" (" .. flags_str .. ")")
+	local bittxt = { "Not set", "Set" }
+	subtree
+		:add(trip_attr_flags_wellknown, buffer(off, 1))
+		:set_text(
+			(flag_wellknown and "1" or "0") .. "... .... = Well-Known: " .. (flag_wellknown and "Set" or "Not set")
+		)
+	subtree:add(trip_attr_flags_trans, buffer(off, 1)):set_text(
+		"."
+			.. (flag_trans and "1" or "0")
+			.. ".. .... = Independent Transitive: "
+			.. (flag_trans and "Set" or "Not set")
+	)
+	subtree
+		:add(trip_attr_flags_depend, buffer(off, 1))
+		:set_text(
+			".." .. (flag_depend and "1" or "0") .. ". .... = Dependent: " .. (flag_depend and "Set" or "Not set")
+		)
+	subtree
+		:add(trip_attr_flags_partial, buffer(off, 1))
+		:set_text(
+			"..." .. (flag_partial and "1" or "0") .. " .... = Partial: " .. (flag_partial and "Set" or "Not set")
+		)
+	subtree:add(trip_attr_flags_lsencap, buffer(off, 1)):set_text(
+		".... "
+			.. (flag_lsencap and "1" or "0")
+			.. "... = Link-State Encapsulated: "
+			.. (flag_lsencap and "Set" or "Not set")
+	)
 end
 
 function dissect_routes(tree, buffer, attr_len, route_off)
