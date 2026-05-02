@@ -97,52 +97,52 @@ function trip_proto.dissector(buffer, pinfo, tree)
 	local subtree = tree:add(trip_proto, buffer(), "TRIP Data")
 
 	-- message header
-	local msg_len = buffer(0, 2):le_uint()
-	subtree:add_le(trip_msg_len, buffer(0, 2))
+	local msg_len = buffer(0, 2):uint()
+	subtree:add(trip_msg_len, buffer(0, 2))
 
-	local msg_type_num = buffer(2, 1):le_uint()
-	subtree:add_le(trip_msg_type, buffer(2, 1)):append_text(" (" .. get_msg_type_name(msg_type_num) .. ")")
+	local msg_type_num = buffer(2, 1):uint()
+	subtree:add(trip_msg_type, buffer(2, 1)):append_text(" (" .. get_msg_type_name(msg_type_num) .. ")")
 
 	-- message data
 	if msg_type_num == 1 then
 		local open_subtree = subtree:add(trip_proto, buffer(3, msg_len), "OPEN")
 
-		local itad = buffer(7, 4):le_uint()
-		local id = buffer(11, 4):le_uint()
+		local itad = buffer(7, 4):uint()
+		local id = buffer(11, 4):uint()
 
-		open_subtree:add_le(trip_open_ver, buffer(3, 1))
-		open_subtree:add_le(trip_open_hold, buffer(5, 2))
-		open_subtree:add_le(trip_open_itad, buffer(7, 4))
-		open_subtree:add_le(trip_open_id, buffer(11, 4)):append_text(" (" .. ipv4_to_str(id) .. ")")
-		open_subtree:add_le(trip_open_optslen, buffer(15, 2))
+		open_subtree:add(trip_open_ver, buffer(3, 1))
+		open_subtree:add(trip_open_hold, buffer(5, 2))
+		open_subtree:add(trip_open_itad, buffer(7, 4))
+		open_subtree:add(trip_open_id, buffer(11, 4)):append_text(" (" .. ipv4_to_str(id) .. ")")
+		open_subtree:add(trip_open_optslen, buffer(15, 2))
 
 		local info_detail = itad .. ":" .. ipv4_to_str(id)
 
-		local optslen = buffer(15, 2):le_uint()
+		local optslen = buffer(15, 2):uint()
 		local optoff = 17
 		while optslen > 0 do
 			local opt_subtree = open_subtree:add(trip_proto, buffer(optoff, optslen), "Optional Parameter")
 
-			local opt_type_num = buffer(optoff, 2):le_uint()
+			local opt_type_num = buffer(optoff, 2):uint()
 			opt_subtree
-				:add_le(trip_opt_type, buffer(optoff, 2))
+				:add(trip_opt_type, buffer(optoff, 2))
 				:append_text(" (" .. get_opt_type_name(opt_type_num) .. ")")
-			opt_subtree:add_le(trip_opt_len, buffer(optoff + 2, 2))
-			local optlen = buffer(optoff + 2, 2):le_uint()
+			opt_subtree:add(trip_opt_len, buffer(optoff + 2, 2))
+			local optlen = buffer(optoff + 2, 2):uint()
 
 			if opt_type_num == 1 then
 				local capslen = optlen
 				local capoff = 21
 				while capslen > 0 do
-					local cap_len = buffer(capoff + 2, 2):le_uint()
+					local cap_len = buffer(capoff + 2, 2):uint()
 					local capinfo_subtree =
 						opt_subtree:add(trip_proto, buffer(capoff, 4 + cap_len), "Capability Information")
 
-					local cap_code_num = buffer(capoff, 2):le_uint()
+					local cap_code_num = buffer(capoff, 2):uint()
 					capinfo_subtree
-						:add_le(trip_capinfo_code, buffer(capoff, 2))
+						:add(trip_capinfo_code, buffer(capoff, 2))
 						:append_text(" (" .. get_capinfo_code_name(cap_code_num) .. ")")
-					capinfo_subtree:add_le(trip_capinfo_len, buffer(capoff + 2, 2))
+					capinfo_subtree:add(trip_capinfo_len, buffer(capoff + 2, 2))
 
 					if cap_code_num == 1 then
 						local routetype_off = capoff + 4
@@ -152,11 +152,11 @@ function trip_proto.dissector(buffer, pinfo, tree)
 								capinfo_subtree:add(trip_proto, buffer(routetype_off, 4), "Route Type")
 
 							routetype_subtree
-								:add_le(trip_af, buffer(routetype_off, 2))
-								:append_text(" (" .. get_af_name(buffer(routetype_off, 2):le_uint()) .. ")")
+								:add(trip_af, buffer(routetype_off, 2))
+								:append_text(" (" .. get_af_name(buffer(routetype_off, 2):uint()) .. ")")
 							routetype_subtree
-								:add_le(trip_appproto, buffer(routetype_off + 2, 2))
-								:append_text(" (" .. get_appproto_name(buffer(routetype_off + 2, 2):le_uint()) .. ")")
+								:add(trip_appproto, buffer(routetype_off + 2, 2))
+								:append_text(" (" .. get_appproto_name(buffer(routetype_off + 2, 2):uint()) .. ")")
 
 							routetype_off = routetype_off + 4
 							routetype_len = routetype_len - 4
@@ -165,8 +165,8 @@ function trip_proto.dissector(buffer, pinfo, tree)
 						local routetype_subtree =
 							capinfo_subtree:add(trip_proto, buffer(capoff + 4, 4), "Transmission Mode")
 						routetype_subtree
-							:add_le(trip_transmode, buffer(capoff + 4, 4))
-							:append_text(" (" .. get_transmode_name(buffer(capoff + 4, 4):le_uint()) .. ")")
+							:add(trip_transmode, buffer(capoff + 4, 4))
+							:append_text(" (" .. get_transmode_name(buffer(capoff + 4, 4):uint()) .. ")")
 					end
 
 					capoff = capoff + (4 + cap_len)
@@ -186,24 +186,24 @@ function trip_proto.dissector(buffer, pinfo, tree)
 
 		local attr_off = 3
 		while msg_len > 0 do
-			local attr_len = buffer(attr_off + 2, 2):le_uint()
-			local attr_flags = buffer(attr_off, 1):le_uint()
+			local attr_len = buffer(attr_off + 2, 2):uint()
+			local attr_flags = buffer(attr_off, 1):uint()
 			local lsencap = attr_flags & 8 == 1
 			local attr_subtree =
 				update_subtree:add(trip_proto, buffer(attr_off, (lsencap and 12 or 4) + attr_len), "Attribute")
 
-			local attr_type = buffer(attr_off + 1, 1):le_uint()
+			local attr_type = buffer(attr_off + 1, 1):uint()
 
-			attr_subtree:add_le(trip_attr_flags, buffer(attr_off, 1))
+			attr_subtree:add(trip_attr_flags, buffer(attr_off, 1))
 			attr_subtree
-				:add_le(trip_attr_type, buffer(attr_off + 1, 1))
+				:add(trip_attr_type, buffer(attr_off + 1, 1))
 				:append_text(" (" .. get_attr_name(attr_type) .. ")")
-			attr_subtree:add_le(trip_attr_len, buffer(attr_off + 2, 2))
+			attr_subtree:add(trip_attr_len, buffer(attr_off + 2, 2))
 
 			local attr_val_off = attr_off + 4
 			if lsencap then
-				attr_subtree:add_le(trip_attr_id, buffer(attr_off + 4, 4))
-				attr_subtree:add_le(trip_attr_seq, buffer(attr_off + 8, 4))
+				attr_subtree:add(trip_attr_id, buffer(attr_off + 4, 4))
+				attr_subtree:add(trip_attr_seq, buffer(attr_off + 8, 4))
 				attr_val_off = attr_val_off + 8
 			end
 
@@ -217,10 +217,10 @@ function trip_proto.dissector(buffer, pinfo, tree)
 				info_detail = "ReachableRoutes[" .. rcount .. "]"
 			elseif attr_type == 3 then
 				local nexthop_subtree = attr_subtree:add(trip_proto, buffer(attr_val_off, attr_len), "NextHopServer")
-				local len = buffer(attr_val_off + 4, 2):le_uint()
-				nexthop_subtree:add_le(trip_nexthop_itad, buffer(attr_val_off, 4))
-				nexthop_subtree:add_le(trip_nexthop_len, buffer(attr_val_off + 4, 2))
-				nexthop_subtree:add_le(trip_nexthop_server, buffer(attr_val_off + 6, len))
+				local len = buffer(attr_val_off + 4, 2):uint()
+				nexthop_subtree:add(trip_nexthop_itad, buffer(attr_val_off, 4))
+				nexthop_subtree:add(trip_nexthop_len, buffer(attr_val_off + 4, 2))
+				nexthop_subtree:add(trip_nexthop_server, buffer(attr_val_off + 6, len))
 			elseif attr_type == 4 then
 				local path_subtree = attr_subtree:add(trip_proto, buffer(attr_val_off, attr_len), "AdvertisementPath")
 				dissect_path(path_subtree, buffer, attr_val_off)
@@ -250,13 +250,11 @@ function trip_proto.dissector(buffer, pinfo, tree)
 	elseif msg_type_num == 3 then
 		local notif_subtree = subtree:add(trip_proto, buffer(3, 2), "NOTIFICATION")
 
-		local code = buffer(3, 1):le_uint()
-		local subcode = buffer(4, 1):le_uint()
+		local code = buffer(3, 1):uint()
+		local subcode = buffer(4, 1):uint()
 
-		notif_subtree:add_le(trip_notif_code, buffer(3, 1)):append_text(" (" .. get_code_name(code) .. ")")
-		notif_subtree
-			:add_le(trip_notif_subcode, buffer(4, 1))
-			:append_text(" (" .. get_subcode_name(code, subcode) .. ")")
+		notif_subtree:add(trip_notif_code, buffer(3, 1)):append_text(" (" .. get_code_name(code) .. ")")
+		notif_subtree:add(trip_notif_subcode, buffer(4, 1)):append_text(" (" .. get_subcode_name(code, subcode) .. ")")
 
 		pinfo.cols.info = "NOTIFICATION " .. get_code_name(code) .. "," .. get_subcode_name(code, subcode)
 	elseif msg_type_num == 4 then
@@ -267,17 +265,17 @@ end
 function dissect_routes(tree, buffer, attr_len, route_off)
 	local count = 0
 	while attr_len > 0 do
-		local prefix_len = buffer(route_off + 4, 2):le_uint()
+		local prefix_len = buffer(route_off + 4, 2):uint()
 		local route_subtree = tree:add(trip_proto, buffer(route_off, 6 + prefix_len), "Route")
 
 		route_subtree
-			:add_le(trip_af, buffer(route_off, 2))
-			:append_text(" (" .. get_af_name(buffer(route_off, 2):le_uint()) .. ")")
+			:add(trip_af, buffer(route_off, 2))
+			:append_text(" (" .. get_af_name(buffer(route_off, 2):uint()) .. ")")
 		route_subtree
-			:add_le(trip_appproto, buffer(route_off + 2, 2))
-			:append_text(" (" .. get_appproto_name(buffer(route_off + 2, 2):le_uint()) .. ")")
-		route_subtree:add_le(trip_route_len, buffer(route_off + 4, 2))
-		route_subtree:add_le(trip_route_prefix, buffer(route_off + 6, prefix_len))
+			:add(trip_appproto, buffer(route_off + 2, 2))
+			:append_text(" (" .. get_appproto_name(buffer(route_off + 2, 2):uint()) .. ")")
+		route_subtree:add(trip_route_len, buffer(route_off + 4, 2))
+		route_subtree:add(trip_route_prefix, buffer(route_off + 6, prefix_len))
 
 		attr_len = attr_len - ((route_off + 6 + prefix_len) - route_off)
 		route_off = route_off + 6 + prefix_len
@@ -287,13 +285,13 @@ function dissect_routes(tree, buffer, attr_len, route_off)
 end
 
 function dissect_path(tree, buffer, off)
-	local type = buffer(off, 1):le_uint()
-	local len = buffer(off + 1, 1):le_uint()
-	tree:add_le(trip_path_type, buffer(off, 1)):append_text(" (" .. get_segment_type_name(type) .. ")")
-	tree:add_le(trip_path_len, buffer(off + 1, 1))
-	local segments_subtree = tree:add(trip_proto, buffer(off + 2, 4 * len), "Segments")
-	for i = 0, len - 1 do
-		segments_subtree:add_le(trip_path_seg, buffer(off + 2 + (4 * i), 4))
+	local type = buffer(off, 1):uint()
+	local len = buffer(off + 1, 1):uint()
+	tree:add(trip_path_type, buffer(off, 1)):append_text(" (" .. get_segment_type_name(type) .. ")")
+	tree:add(trip_path_len, buffer(off + 1, 1))
+	local segments_subtree = tree:add(trip_proto, buffer(off + 2, len), "Segments")
+	for i = 0, len - 1, 4 do
+		segments_subtree:add(trip_path_seg, buffer(off + 2 + i, 4))
 	end
 end
 
@@ -304,7 +302,7 @@ end
 function get_str_len(buffer, off)
 	local string_length
 	for i = off, Length - 1, 1 do
-		if buffer(i, 1):le_uint() == 0 then
+		if buffer(i, 1):uint() == 0 then
 			string_length = i - off
 			break
 		end
